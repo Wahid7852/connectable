@@ -28,6 +28,7 @@ export default function Home() {
     handleNotification
   } = useChatContext();
 
+  const [messageToReply, setMessageToReply] = useState(null);
   const [password, setPassword] = useState('');
   const [input, setInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -423,18 +424,31 @@ export default function Home() {
     };
   }, [mediaRecorder]);
 
-  const handleSendMessage = async () => {
-    if (!input.trim()) return;
+const handleSendMessage = async () => {
+  if (!input.trim()) return;
 
-    try {
-      const formattedContent = formatMessage(input);
-      const contentWithEmojis = convertToEmoji(formattedContent);
-      await sendMessage(contentWithEmojis);
-      setInput('');
-    } catch (error) {
-      console.error('Failed to send message:', error);
+  try {
+    const formattedContent = formatMessage(input);
+    const contentWithEmojis = convertToEmoji(formattedContent);
+
+    // Create the message data object
+    const messageData = {
+      content: contentWithEmojis,
+    };
+
+    // Include replyTo only if replying to a message
+    if (messageToReply) {
+      messageData.replyTo = messageToReply._id;
     }
-  };
+
+    // Send the message
+    await sendMessage(JSON.stringify(messageData));
+    setInput('');
+    setMessageToReply(null); // Clear the reply context after sending
+  } catch (error) {
+    console.error('Failed to send message:', error);
+  }
+};
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.ctrlKey) {
@@ -448,40 +462,77 @@ export default function Home() {
 
   const formatMessage = (message) => {
     let formatted = message;
+
+    // Apply existing formatting rules
     formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     formatted = formatted.replace(/\*(.+?)\*/g, '<em>$1</em>');
     formatted = formatted.replace(/~(.+?)~/g, '<del>$1</del>');
     formatted = formatted.replace(/\|\|(.+?)\|\|/g, '<span class="spoiler">$1</span>');
     formatted = formatted.replace(/\n/g, '<br>');
+
     return formatted;
   };
 
-  const renderMessageContent = (msg) => {
-    try {
-      let messageData = msg.content;
-      if (typeof msg.content === 'string') {
-        try {
-          messageData = JSON.parse(msg.content);
-        } catch (e) {
-          return <span dangerouslySetInnerHTML={{ __html: msg.content }}></span>;
-        }
+const renderMessageContent = (msg) => {
+  try {
+    let messageData = msg.content;
+    if (typeof msg.content === 'string') {
+      try {
+        messageData = JSON.parse(msg.content);
+      } catch (e) {
+        // If parsing fails, treat it as a normal message
+        const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig;
+        const contentWithLinks = msg.content.replace(urlRegex, (url) => {
+          return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+        });
+        return <span dangerouslySetInnerHTML={{ __html: contentWithLinks }}></span>;
       }
-
-      if (messageData.type === 'file' || messageData.messageType === 'file') {
-        return <FileMessage messageData={messageData} />;
-      }
-
-      return <span dangerouslySetInnerHTML={{ __html: msg.content }}></span>;
-    } catch (error) {
-      console.error('Error rendering message:', error);
-      return <span>{msg.content || 'Error displaying message'}</span>;
     }
-  };
 
-  const renderMessage = (msg) => {
-    const isBookmarked = savedMessages.some(m => m.originalMessageId === msg._id);
+    // Handle file messages
+    if (messageData.type === 'file' || messageData.messageType === 'file') {
+      return <FileMessage messageData={messageData} />;
+    }
 
-    return (
+    // Handle replies
+    if (messageData.replyTo) {
+      const repliedMessage = messages.find(m => m._id === messageData.replyTo);
+      return (
+        <div className="reply-message">
+          <div className="reply-preview">
+            Replying to <strong>{repliedMessage?.username}</strong>: {repliedMessage?.content.substring(0, 30)}...
+          </div>
+          <span dangerouslySetInnerHTML={{ __html: messageData.content }}></span>
+        </div>
+      );
+    }
+
+    // Handle normal messages
+    return <span dangerouslySetInnerHTML={{ __html: messageData.content }}></span>;
+  } catch (error) {
+    console.error('Error rendering message:', error);
+    return <span>{msg.content || 'Error displaying message'}</span>;
+  }
+};
+
+const renderMessage = (msg, prevMsg) => {
+  const isBookmarked = savedMessages.some(m => m.originalMessageId === msg._id);
+  const msgDate = new Date(msg.timestamp);
+  const prevMsgDate = prevMsg ? new Date(prevMsg.timestamp) : null;
+
+  // Check if the timestamp is valid
+  const isValidDate = !isNaN(msgDate.getTime());
+
+  // Check if this is the first message of the day
+  const isNewDay = prevMsgDate ? msgDate.toDateString() !== prevMsgDate.toDateString() : true;
+
+  return (
+    <>
+      {isNewDay && (
+        <div className="day-separator">
+          {isValidDate ? msgDate.toLocaleDateString() : "Unknown Date"}
+        </div>
+      )}
       <div className="message-content">
         <div className="message-header">
           <strong>{msg.username}: </strong>
@@ -492,16 +543,24 @@ export default function Home() {
           >
             🗁
           </button>
+          <button
+            className="reply-button"
+            onClick={() => setMessageToReply(msg)}
+            title="Reply to this message"
+          >
+            ↩️
+          </button>
         </div>
         {renderMessageContent(msg)}
         <span className="timestamp">
-          ({new Date(msg.timestamp).toLocaleTimeString()})
+          {isValidDate ? msgDate.toLocaleTimeString() : "Unknown Time"}
         </span>
       </div>
-    );
-  };
+    </>
+  );
+};
 
-  if (!authenticated) {
+if (!authenticated) {
     return (
       <div className="auth-container">
         <h1>Login</h1>
@@ -573,19 +632,33 @@ export default function Home() {
         </div>
       </header>
       <main className="chat-body">
-        <div className="chat-messages">
-          {(showSaved ? savedMessages : messages.filter(msg =>
-            !savedMessages.some(saved => saved.originalMessageId === msg._id)
-          )).map((msg, idx) => (
-            <div key={idx} className="chat-message">
-              {renderMessage(msg)}
-            </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
+      <div className="chat-messages">
+        {(showSaved ? savedMessages : messages.filter(msg =>
+          !savedMessages.some(saved => saved.originalMessageId === msg._id)
+        ).map((msg, idx, arr) => (
+          <div key={idx} className="chat-message">
+            {renderMessage(msg, arr[idx - 1])}
+          </div>
+        )))}
+        <div ref={messagesEndRef} />
+      </div>
       </main>
 
       <footer className="chat-footer">
+        {messageToReply && (
+          <div className="reply-context">
+            <div className="reply-preview">
+              Replying to <strong>{messageToReply.username}</strong>: {messageToReply.content.substring(0, 30)}...
+            </div>
+            <button
+              className="cancel-reply-button"
+              onClick={() => setMessageToReply(null)}
+            >
+              ✖️
+            </button>
+          </div>
+        )}
+
         {uploadProgress !== null && (
           <div className="upload-progress">
             <div

@@ -436,3 +436,97 @@ input {
 .gif-item:hover img {
   @apply transform scale-105;
 }
+
+.day-separator {
+  text-align: center;
+  margin: 20px 0;
+  padding: 8px;
+  background-color: #f0f0f0;
+  color: #666;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  position: relative;
+}
+
+/* Hover effect for day separator */
+.day-separator:hover::after {
+  content: attr(data-date);
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.message-content a {
+  color: #1a73e8;
+  text-decoration: underline;
+}
+
+.message-content a:hover {
+  color: #1557b7;
+}
+
+.timestamp:hover::after {
+  content: attr(data-time);
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  background-color: #333;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.chat-message.current-user {
+  background-color: #ff6a00;
+}
+
+/* Message from other users */
+.chat-message.other-user {
+  background-color: #ffffff;
+}
+
+.reply-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #f0f0f0;
+  padding: 8px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.reply-preview {
+  font-size: 0.9em;
+  color: #555;
+}
+
+.cancel-reply-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #888;
+}
+
+.reply-message {
+  border-left: 3px solid #1a73e8;
+  padding-left: 8px;
+  margin-top: 8px;
+}
+
+.reply-message .reply-preview {
+  font-size: 0.8em;
+  color: #777;
+  margin-bottom: 4px;
+}
